@@ -15,8 +15,11 @@ import androidx.core.app.NotificationManagerCompat
 data class NowPlaying(
     val title: String,
     val artist: String,
+    val album: String,
     val app: String,
+    val packageName: String,
     val art: Bitmap?,
+    val artColor: Int?,        // средний цвет обложки — для мягкой подсветки фона
     val playing: Boolean,
     val positionMs: Long,      // позиция на момент lastUpdate
     val lastUpdate: Long,      // SystemClock.elapsedRealtime()
@@ -34,6 +37,8 @@ data class NowPlaying(
     fun playPause() = if (playing) controller.transportControls.pause() else controller.transportControls.play()
     fun next() = controller.transportControls.skipToNext()
     fun previous() = controller.transportControls.skipToPrevious()
+    fun seekTo(ms: Long) = controller.transportControls.seekTo(ms)
+    fun pause() = controller.transportControls.pause()
 }
 
 object MediaAccess {
@@ -100,14 +105,18 @@ class MediaWatcher(
             onChange(null); return
         }
         val state = c.playbackState
+        val art = meta.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: meta.getBitmap(MediaMetadata.METADATA_KEY_ART)
         onChange(
             NowPlaying(
                 title = meta.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
                 artist = meta.getString(MediaMetadata.METADATA_KEY_ARTIST)
                     ?: meta.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST).orEmpty(),
+                album = meta.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
                 app = appName(c.packageName),
-                art = meta.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                    ?: meta.getBitmap(MediaMetadata.METADATA_KEY_ART),
+                packageName = c.packageName,
+                art = art,
+                artColor = art?.let { averageColor(it) },
                 playing = state?.state == PlaybackState.STATE_PLAYING,
                 positionMs = state?.position ?: 0,
                 lastUpdate = state?.lastPositionUpdateTime ?: SystemClock.elapsedRealtime(),
@@ -117,6 +126,10 @@ class MediaWatcher(
             )
         )
     }
+
+    private fun averageColor(b: Bitmap): Int? = runCatching {
+        Bitmap.createScaledBitmap(b, 1, 1, true).getPixel(0, 0)
+    }.getOrNull()
 
     private fun appName(pkg: String): String = when (pkg) {
         "com.spotify.music" -> "Spotify"
